@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeVideo } from "@/lib/gemini";
+import { analyzeGeminiFile } from "@/lib/gemini";
 
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
-    const { blobUrl } = await request.json();
+    const { geminiFileName } = await request.json();
 
-    if (!blobUrl) {
+    if (!geminiFileName) {
       return NextResponse.json(
-        { error: true, message: "No se proporcionó la URL del video" },
+        { error: true, message: "No se proporcionó el archivo de Gemini" },
         { status: 400 }
       );
     }
 
-    const analysis = await analyzeVideo(blobUrl);
+    const analysis = await analyzeGeminiFile(geminiFileName);
 
     return NextResponse.json({
       status: "completed",

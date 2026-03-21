@@ -1,59 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
-import { put } from "@vercel/blob";
-import { isTikTokUrl } from "@/lib/tiktok";
-import { downloadTikTokVideo } from "@/lib/tiktok";
-import * as fs from "fs";
-import * as path from "path";
+import { uploadToGemini } from "@/lib/gemini";
+
+export const maxDuration = 60;
+
+const MAX_FILE_SIZE = 3.5 * 1024 * 1024; // 3.5MB (safe margin for Vercel's 4.5MB body limit)
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const url = body.url as string;
+    const formData = await request.formData();
+    const file = formData.get("video") as File | null;
 
-    if (!url || !isTikTokUrl(url)) {
+    if (!file) {
+      return NextResponse.json(
+        { error: true, message: "No se proporcionó ningún archivo" },
+        { status: 400 }
+      );
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
         {
           error: true,
-          message: "URL inválida. Debe ser una URL de TikTok.",
+          message: `El archivo es demasiado grande (${(file.size / 1024 / 1024).toFixed(1)}MB). El tamaño máximo es 3.5MB.`,
         },
         { status: 400 }
       );
     }
 
-    // Download to a temp directory first
-    const tmpDir = "/tmp/clonar-virales/downloads";
-    const localPath = await downloadTikTokVideo(url, tmpDir);
-
-    // Upload to Vercel Blob
-    const fileBuffer = fs.readFileSync(localPath);
-    const fileName = path.basename(localPath);
-    const blob = await put(fileName, fileBuffer, {
-      access: "public",
-      contentType: "video/mp4",
-    });
-
-    // Clean up temp file
-    try {
-      fs.unlinkSync(localPath);
-    } catch {
-      // ignore cleanup errors
-    }
-
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const mimeType = file.type || "video/mp4";
+    const geminiFileName = await uploadToGemini(buffer, mimeType);
     const jobId = crypto.randomUUID();
 
-    return NextResponse.json({
-      jobId,
-      fileName,
-      blobUrl: blob.url,
-    });
+    return NextResponse.json({ jobId, geminiFileName });
   } catch (err) {
     return NextResponse.json(
       {
         error: true,
-        message:
-          err instanceof Error
-            ? err.message
-            : "No se pudo descargar el video. Intenta subir el archivo directamente.",
+        message: err instanceof Error ? err.message : "Error al subir el archivo",
       },
       { status: 500 }
     );

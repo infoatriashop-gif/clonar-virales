@@ -7,11 +7,11 @@ import { VideoAnalysis } from "@/lib/types";
 
 interface Step2Props {
   jobId: string;
-  blobUrl: string;
+  geminiFileName: string;
   onAnalyzed: (analysis: VideoAnalysis) => void;
 }
 
-export function Step2Analysis({ jobId, blobUrl, onAnalyzed }: Step2Props) {
+export function Step2Analysis({ jobId, geminiFileName, onAnalyzed }: Step2Props) {
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export function Step2Analysis({ jobId, blobUrl, onAnalyzed }: Step2Props) {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blobUrl }),
+        body: JSON.stringify({ geminiFileName }),
       });
 
       if (!res.ok) {
@@ -48,7 +48,7 @@ export function Step2Analysis({ jobId, blobUrl, onAnalyzed }: Step2Props) {
     } finally {
       setLoading(false);
     }
-  }, [jobId, blobUrl]);
+  }, [jobId, geminiFileName]);
 
   useEffect(() => {
     runAnalysis();

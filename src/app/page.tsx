@@ -28,8 +28,8 @@ export default function Home() {
   } = useWizard();
 
   const handleUpload = useCallback(
-    (jobId: string, blobUrl: string) => {
-      setJobId(jobId, blobUrl);
+    (jobId: string, geminiFileName: string) => {
+      setJobId(jobId, geminiFileName);
       setStep(2);
     },
     [setJobId, setStep]
@@ -99,8 +99,8 @@ export default function Home() {
           <Step1Upload onUploaded={handleUpload} />
         )}
 
-        {state.currentStep === 2 && state.jobId && state.blobUrl && (
-          <Step2Analysis jobId={state.jobId} blobUrl={state.blobUrl} onAnalyzed={handleAnalysis} />
+        {state.currentStep === 2 && state.jobId && state.geminiFileName && (
+          <Step2Analysis jobId={state.jobId} geminiFileName={state.geminiFileName} onAnalyzed={handleAnalysis} />
         )}
 
         {state.currentStep === 3 && state.analysis && (

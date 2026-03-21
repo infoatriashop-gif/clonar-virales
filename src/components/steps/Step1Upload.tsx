@@ -1,76 +1,63 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { upload } from "@vercel/blob/client";
 
 interface Step1Props {
-  onUploaded: (jobId: string, blobUrl: string) => void;
+  onUploaded: (jobId: string, geminiFileName: string) => void;
 }
 
+const MAX_FILE_SIZE = 3.5 * 1024 * 1024; // 3.5MB
+
 export function Step1Upload({ onUploaded }: Step1Props) {
-  const [mode, setMode] = useState<"file" | "url">("file");
-  const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<number | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const uploadFile = async (file: File) => {
-    setLoading(true);
-    setError(null);
-    setProgress(0);
-
-    try {
-      const blob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/upload/blob",
-        onUploadProgress: ({ percentage }) => {
-          setProgress(percentage);
-        },
-      });
-
-      const jobId = crypto.randomUUID();
-      onUploaded(jobId, blob.url);
-    } catch (err) {
+    if (file.size > MAX_FILE_SIZE) {
       setError(
-        err instanceof Error ? err.message : "Error al subir el archivo"
+        `El archivo es demasiado grande (${(file.size / 1024 / 1024).toFixed(1)}MB). El tamaño máximo es 3.5MB. Intenta comprimir el video antes de subirlo.`
       );
-    } finally {
-      setLoading(false);
-      setProgress(null);
+      return;
     }
-  };
 
-  const uploadUrl = async () => {
-    if (!url.trim()) return;
     setLoading(true);
     setError(null);
 
     try {
+      const formData = new FormData();
+      formData.append("video", file);
+
       const res = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: formData,
       });
 
       if (!res.ok) {
-        const text = await res.text();
         let message = `Error del servidor (${res.status})`;
-        try {
-          const json = JSON.parse(text);
-          if (json.message) message = json.message;
-        } catch {
-          // non-JSON response
+        if (res.status === 413) {
+          message =
+            "El archivo es demasiado grande. El tamaño máximo es 3.5MB.";
+        } else {
+          try {
+            const text = await res.text();
+            const json = JSON.parse(text);
+            if (json.message) message = json.message;
+          } catch {
+            // non-JSON response, use default message
+          }
         }
         throw new Error(message);
       }
 
       const data = await res.json();
       if (data.error) throw new Error(data.message);
-      onUploaded(data.jobId, data.blobUrl);
+      onUploaded(data.jobId, data.geminiFileName);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error con la URL");
+      setError(
+        err instanceof Error ? err.message : "Error al subir el archivo"
+      );
     } finally {
       setLoading(false);
     }
@@ -89,105 +76,46 @@ export function Step1Upload({ onUploaded }: Step1Props) {
         Sube tu video viral
       </h2>
       <p className="text-gray-400 text-center mb-6">
-        Sube el video de TikTok que quieres replicar
+        Sube el video de TikTok que quieres replicar (max 3.5MB)
       </p>
 
-      {/* Mode toggle */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setMode("file")}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-            mode === "file"
-              ? "bg-purple-600 text-white"
-              : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-          }`}
-        >
-          Subir Archivo
-        </button>
-        <button
-          onClick={() => setMode("url")}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-            mode === "url"
-              ? "bg-purple-600 text-white"
-              : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-          }`}
-        >
-          URL de TikTok
-        </button>
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragActive(true);
+        }}
+        onDragLeave={() => setDragActive(false)}
+        onDrop={handleDrop}
+        onClick={() => inputRef.current?.click()}
+        className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${
+          dragActive
+            ? "border-purple-500 bg-purple-500/10"
+            : "border-gray-600 hover:border-gray-500 bg-gray-800/50"
+        }`}
+      >
+        <div className="text-4xl mb-3">{"🎬"}</div>
+        <p className="text-white font-medium mb-1">Arrastra tu video aqui</p>
+        <p className="text-gray-400 text-sm">
+          o haz click para seleccionar (.mp4, .mov, .avi, .webm)
+        </p>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="video/mp4,video/mov,video/avi,video/webm"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) uploadFile(file);
+          }}
+        />
       </div>
 
-      {mode === "file" ? (
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragActive(true);
-          }}
-          onDragLeave={() => setDragActive(false)}
-          onDrop={handleDrop}
-          onClick={() => inputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${
-            dragActive
-              ? "border-purple-500 bg-purple-500/10"
-              : "border-gray-600 hover:border-gray-500 bg-gray-800/50"
-          }`}
-        >
-          <div className="text-4xl mb-3">{"🎬"}</div>
-          <p className="text-white font-medium mb-1">
-            Arrastra tu video aqui
-          </p>
-          <p className="text-gray-400 text-sm">
-            o haz click para seleccionar (.mp4, .mov, .avi, .webm)
-          </p>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="video/mp4,video/mov,video/avi,video/webm"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) uploadFile(file);
-            }}
-          />
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <input
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://www.tiktok.com/@user/video/..."
-            className="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
-          />
-          <button
-            onClick={uploadUrl}
-            disabled={!url.trim() || loading}
-            className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 text-white font-medium py-3 rounded-lg transition-colors"
-          >
-            Descargar y Continuar
-          </button>
-        </div>
-      )}
-
       {loading && (
-        <div className="mt-6">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-            <span className="text-gray-300">
-              {mode === "url"
-                ? "Descargando video..."
-                : progress !== null
-                  ? `Subiendo video... ${Math.round(progress)}%`
-                  : "Subiendo video..."}
-            </span>
-          </div>
-          {progress !== null && (
-            <div className="w-full bg-gray-700 rounded-full h-2">
-              <div
-                className="bg-purple-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          )}
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-gray-300">
+            Subiendo video a Gemini...
+          </span>
         </div>
       )}
 
