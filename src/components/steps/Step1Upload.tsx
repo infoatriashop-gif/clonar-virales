@@ -14,7 +14,16 @@ export function Step1Upload({ onUploaded }: Step1Props) {
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB (Vercel body limit)
+
   const uploadFile = async (file: File) => {
+    if (file.size > MAX_FILE_SIZE) {
+      setError(
+        `El archivo es demasiado grande (${(file.size / 1024 / 1024).toFixed(1)}MB). El tamaño máximo es 4MB. Intenta comprimir el video antes de subirlo.`
+      );
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -26,6 +35,14 @@ export function Step1Upload({ onUploaded }: Step1Props) {
         method: "POST",
         body: formData,
       });
+
+      if (!res.ok) {
+        if (res.status === 413) {
+          throw new Error("El archivo es demasiado grande. El tamaño máximo es 4MB.");
+        }
+        throw new Error(`Error del servidor (${res.status}). Intenta de nuevo.`);
+      }
+
       const data = await res.json();
       if (data.error) throw new Error(data.message);
       onUploaded(data.jobId);
@@ -49,6 +66,11 @@ export function Step1Upload({ onUploaded }: Step1Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
+
+      if (!res.ok) {
+        throw new Error(`Error del servidor (${res.status}). Intenta de nuevo.`);
+      }
+
       const data = await res.json();
       if (data.error) throw new Error(data.message);
       onUploaded(data.jobId);
