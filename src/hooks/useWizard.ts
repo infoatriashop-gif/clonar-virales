@@ -5,7 +5,7 @@ import { VideoAnalysis, WizardState } from "@/lib/types";
 
 type WizardAction =
   | { type: "SET_STEP"; step: WizardState["currentStep"] }
-  | { type: "SET_JOB_ID"; jobId: string; filePath: string }
+  | { type: "SET_JOB_ID"; jobId: string; blobUrl: string }
   | { type: "SET_ANALYSIS"; analysis: VideoAnalysis }
   | { type: "SET_BASE_IMAGES"; images: string[] }
   | { type: "SELECT_BASE_IMAGE"; index: number }
@@ -23,7 +23,7 @@ type WizardAction =
 const initialState: WizardState = {
   currentStep: 1,
   jobId: null,
-  filePath: null,
+  blobUrl: null,
   analysis: null,
   baseImages: [],
   selectedBaseImage: null,
@@ -40,7 +40,7 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     case "SET_STEP":
       return { ...state, currentStep: action.step };
     case "SET_JOB_ID":
-      return { ...state, jobId: action.jobId, filePath: action.filePath };
+      return { ...state, jobId: action.jobId, blobUrl: action.blobUrl };
     case "SET_ANALYSIS":
       return {
         ...state,
@@ -82,7 +82,7 @@ export function useWizard() {
     []
   );
   const setJobId = useCallback(
-    (jobId: string, filePath: string) => dispatch({ type: "SET_JOB_ID", jobId, filePath }),
+    (jobId: string, blobUrl: string) => dispatch({ type: "SET_JOB_ID", jobId, blobUrl }),
     []
   );
   const setAnalysis = useCallback(

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { upload } from "@vercel/blob/client";
 
 interface Step1Props {
-  onUploaded: (jobId: string, filePath: string) => void;
+  onUploaded: (jobId: string, blobUrl: string) => void;
 }
 
 export function Step1Upload({ onUploaded }: Step1Props) {
@@ -11,47 +12,33 @@ export function Step1Upload({ onUploaded }: Step1Props) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB (Vercel body limit)
-
   const uploadFile = async (file: File) => {
-    if (file.size > MAX_FILE_SIZE) {
-      setError(
-        `El archivo es demasiado grande (${(file.size / 1024 / 1024).toFixed(1)}MB). El tamaño máximo es 4MB. Intenta comprimir el video antes de subirlo.`
-      );
-      return;
-    }
-
     setLoading(true);
     setError(null);
-
-    const formData = new FormData();
-    formData.append("video", file);
+    setProgress(0);
 
     try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload/blob",
+        onUploadProgress: ({ percentage }) => {
+          setProgress(percentage);
+        },
       });
 
-      if (!res.ok) {
-        if (res.status === 413) {
-          throw new Error("El archivo es demasiado grande. El tamaño máximo es 4MB.");
-        }
-        throw new Error(`Error del servidor (${res.status}). Intenta de nuevo.`);
-      }
-
-      const data = await res.json();
-      if (data.error) throw new Error(data.message);
-      onUploaded(data.jobId, data.filePath);
+      const jobId = crypto.randomUUID();
+      onUploaded(jobId, blob.url);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Error al subir el archivo"
       );
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   };
 
@@ -68,12 +55,20 @@ export function Step1Upload({ onUploaded }: Step1Props) {
       });
 
       if (!res.ok) {
-        throw new Error(`Error del servidor (${res.status}). Intenta de nuevo.`);
+        const text = await res.text();
+        let message = `Error del servidor (${res.status})`;
+        try {
+          const json = JSON.parse(text);
+          if (json.message) message = json.message;
+        } catch {
+          // non-JSON response
+        }
+        throw new Error(message);
       }
 
       const data = await res.json();
       if (data.error) throw new Error(data.message);
-      onUploaded(data.jobId, data.filePath);
+      onUploaded(data.jobId, data.blobUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error con la URL");
     } finally {
@@ -174,11 +169,25 @@ export function Step1Upload({ onUploaded }: Step1Props) {
       )}
 
       {loading && (
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-          <span className="text-gray-300">
-            {mode === "url" ? "Descargando video..." : "Subiendo video..."}
-          </span>
+        <div className="mt-6">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-gray-300">
+              {mode === "url"
+                ? "Descargando video..."
+                : progress !== null
+                  ? `Subiendo video... ${Math.round(progress)}%`
+                  : "Subiendo video..."}
+            </span>
+          </div>
+          {progress !== null && (
+            <div className="w-full bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
 

@@ -106,7 +106,7 @@ export interface Job {
 export interface WizardState {
   currentStep: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   jobId: string | null;
-  filePath: string | null;
+  blobUrl: string | null;
   analysis: VideoAnalysis | null;
   baseImages: string[];
   selectedBaseImage: number | null;

@@ -5,16 +5,16 @@ export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
-    const { filePath } = await request.json();
+    const { blobUrl } = await request.json();
 
-    if (!filePath) {
+    if (!blobUrl) {
       return NextResponse.json(
-        { error: true, message: "No se proporcionó la ruta del archivo" },
+        { error: true, message: "No se proporcionó la URL del video" },
         { status: 400 }
       );
     }
 
-    const analysis = await analyzeVideo(filePath);
+    const analysis = await analyzeVideo(blobUrl);
 
     return NextResponse.json({
       status: "completed",

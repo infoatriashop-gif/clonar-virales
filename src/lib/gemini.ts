@@ -1,8 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { ANALYSIS_PROMPT } from "./prompts";
 import { VideoAnalysis } from "./types";
-import * as fs from "fs";
-import * as path from "path";
 
 function getClient() {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -10,17 +8,20 @@ function getClient() {
   return new GoogleGenAI({ apiKey });
 }
 
-export async function analyzeVideo(filePath: string): Promise<VideoAnalysis> {
+export async function analyzeVideo(blobUrl: string): Promise<VideoAnalysis> {
   const ai = getClient();
 
-  // 1. Upload to Gemini File API
-  const absolutePath = path.resolve(filePath);
-  if (!fs.existsSync(absolutePath)) {
-    throw new Error(`Archivo no encontrado: ${absolutePath}`);
+  // 1. Download video from blob URL
+  const response = await fetch(blobUrl);
+  if (!response.ok) {
+    throw new Error(`No se pudo descargar el video: ${response.status}`);
   }
+  const arrayBuffer = await response.arrayBuffer();
+  const videoBuffer = Buffer.from(arrayBuffer);
 
+  // 2. Upload to Gemini File API
   const uploadedFile = await ai.files.upload({
-    file: absolutePath,
+    file: new Blob([videoBuffer], { type: "video/mp4" }),
     config: { mimeType: "video/mp4" },
   });
 
@@ -28,7 +29,7 @@ export async function analyzeVideo(filePath: string): Promise<VideoAnalysis> {
     throw new Error("Error al subir el archivo a Gemini");
   }
 
-  // 2. Wait for file processing
+  // 3. Wait for file processing
   let fileStatus = await ai.files.get({ name: uploadedFile.name });
   while (fileStatus.state === "PROCESSING") {
     await new Promise((r) => setTimeout(r, 5000));
@@ -39,8 +40,8 @@ export async function analyzeVideo(filePath: string): Promise<VideoAnalysis> {
     throw new Error("Gemini no pudo procesar el video");
   }
 
-  // 3. Analyze with generateContent
-  const response = await ai.models.generateContent({
+  // 4. Analyze with generateContent
+  const result = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-05-20",
     contents: [
       {
@@ -61,7 +62,7 @@ export async function analyzeVideo(filePath: string): Promise<VideoAnalysis> {
     },
   });
 
-  const text = response.text;
+  const text = result.text;
   if (!text) {
     throw new Error("Gemini no devolvió respuesta");
   }
