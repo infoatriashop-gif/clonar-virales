@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 
 interface Step1Props {
-  onUploaded: (jobId: string) => void;
+  onUploaded: (jobId: string, filePath: string) => void;
 }
 
 export function Step1Upload({ onUploaded }: Step1Props) {
@@ -45,7 +45,7 @@ export function Step1Upload({ onUploaded }: Step1Props) {
 
       const data = await res.json();
       if (data.error) throw new Error(data.message);
-      onUploaded(data.jobId);
+      onUploaded(data.jobId, data.filePath);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Error al subir el archivo"
@@ -73,7 +73,7 @@ export function Step1Upload({ onUploaded }: Step1Props) {
 
       const data = await res.json();
       if (data.error) throw new Error(data.message);
-      onUploaded(data.jobId);
+      onUploaded(data.jobId, data.filePath);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error con la URL");
     } finally {

@@ -1,50 +1,58 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
-import { usePolling } from "@/hooks/usePolling";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { LoadingSpinner } from "@/components/ui/ProgressBar";
 import { AnalysisCard } from "@/components/ui/AnalysisCard";
 import { VideoAnalysis } from "@/lib/types";
 
 interface Step2Props {
   jobId: string;
+  filePath: string;
   onAnalyzed: (analysis: VideoAnalysis) => void;
 }
 
-interface AnalysisResponse {
-  status: string;
-  analysis?: VideoAnalysis;
-  error?: string;
-}
+export function Step2Analysis({ jobId, filePath, onAnalyzed }: Step2Props) {
+  const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const startedRef = useRef(false);
 
-export function Step2Analysis({ jobId, onAnalyzed }: Step2Props) {
-  // Trigger analysis
+  const runAnalysis = useCallback(async () => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId, filePath }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        let message = `Error del servidor (${res.status})`;
+        try {
+          const json = JSON.parse(text);
+          if (json.message) message = json.message;
+        } catch {
+          // non-JSON response
+        }
+        throw new Error(message);
+      }
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.message);
+      setAnalysis(data.analysis);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error en el análisis");
+    } finally {
+      setLoading(false);
+    }
+  }, [jobId, filePath]);
+
   useEffect(() => {
-    fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId }),
-    });
-  }, [jobId]);
-
-  const handleComplete = useCallback(
-    (data: AnalysisResponse) => {
-      if (data.analysis) onAnalyzed(data.analysis);
-    },
-    [onAnalyzed]
-  );
-
-  const checkComplete = useCallback(
-    (data: AnalysisResponse) => data.status === "completed",
-    []
-  );
-
-  const { data, loading, error } = usePolling<AnalysisResponse>({
-    url: `/api/analyze/${jobId}`,
-    interval: 3000,
-    onComplete: handleComplete,
-    isComplete: checkComplete,
-  });
+    runAnalysis();
+  }, [runAnalysis]);
 
   if (error) {
     return (
@@ -57,13 +65,11 @@ export function Step2Analysis({ jobId, onAnalyzed }: Step2Props) {
     );
   }
 
-  if (loading || !data?.analysis) {
+  if (loading || !analysis) {
     return (
-      <LoadingSpinner text="Analizando video... Esto puede tomar unos minutos" />
+      <LoadingSpinner text="Analizando video con IA... Esto puede tomar unos minutos" />
     );
   }
-
-  const analysis = data.analysis;
 
   return (
     <div className="max-w-3xl mx-auto">

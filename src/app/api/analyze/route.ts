@@ -1,49 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getJob, updateJob } from "@/lib/jobs";
 import { analyzeVideo } from "@/lib/gemini";
+
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
-    const { jobId } = await request.json();
+    const { filePath } = await request.json();
 
-    const job = getJob(jobId);
-    if (!job) {
+    if (!filePath) {
       return NextResponse.json(
-        { error: true, message: "Job no encontrado" },
-        { status: 404 }
-      );
-    }
-
-    if (!job.filePath) {
-      return NextResponse.json(
-        { error: true, message: "No hay archivo de video asociado al job" },
+        { error: true, message: "No se proporcionó la ruta del archivo" },
         { status: 400 }
       );
     }
 
-    updateJob(jobId, { status: "analyzing" });
-
-    // Run analysis in background
-    analyzeVideo(job.filePath)
-      .then((analysis) => {
-        updateJob(jobId, { status: "pending", analysis });
-      })
-      .catch((err) => {
-        updateJob(jobId, {
-          status: "error",
-          error: err instanceof Error ? err.message : "Error en el análisis",
-        });
-      });
+    const analysis = await analyzeVideo(filePath);
 
     return NextResponse.json({
-      jobId,
-      status: "analyzing",
+      status: "completed",
+      analysis,
     });
   } catch (err) {
     return NextResponse.json(
       {
         error: true,
-        message: err instanceof Error ? err.message : "Error del servidor",
+        message: err instanceof Error ? err.message : "Error en el análisis",
       },
       { status: 500 }
     );
