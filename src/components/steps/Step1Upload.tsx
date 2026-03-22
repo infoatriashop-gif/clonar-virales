@@ -113,7 +113,7 @@ export function Step1Upload({ onUploaded }: Step1Props) {
         Sube tu video viral
       </h2>
       <p className="text-gray-400 text-center mb-6">
-        Sube el video de TikTok que quieres replicar
+        Sube el video de TikTok que quieres replicar (sin limite de tamaño)
       </p>
 
       <div
