@@ -6,54 +6,91 @@ interface Step1Props {
   onUploaded: (jobId: string, geminiFileName: string) => void;
 }
 
-const MAX_FILE_SIZE = 3.5 * 1024 * 1024; // 3.5MB
+const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB per chunk
 
 export function Step1Upload({ onUploaded }: Step1Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number>(0);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const uploadFile = async (file: File) => {
-    if (file.size > MAX_FILE_SIZE) {
-      setError(
-        `El archivo es demasiado grande (${(file.size / 1024 / 1024).toFixed(1)}MB). El tamaño máximo es 3.5MB. Intenta comprimir el video antes de subirlo.`
-      );
-      return;
-    }
-
     setLoading(true);
     setError(null);
+    setProgress(0);
 
     try {
-      const formData = new FormData();
-      formData.append("video", file);
-
-      const res = await fetch("/api/upload", {
+      // 1. Init resumable upload session
+      const initRes = await fetch("/api/upload/init", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type || "video/mp4",
+        }),
       });
 
-      if (!res.ok) {
-        let message = `Error del servidor (${res.status})`;
-        if (res.status === 413) {
-          message =
-            "El archivo es demasiado grande. El tamaño máximo es 3.5MB.";
-        } else {
-          try {
-            const text = await res.text();
-            const json = JSON.parse(text);
-            if (json.message) message = json.message;
-          } catch {
-            // non-JSON response, use default message
-          }
-        }
+      if (!initRes.ok) {
+        const text = await initRes.text();
+        let message = "Error al iniciar la subida";
+        try {
+          const json = JSON.parse(text);
+          if (json.message) message = json.message;
+        } catch { /* non-JSON */ }
         throw new Error(message);
       }
 
-      const data = await res.json();
-      if (data.error) throw new Error(data.message);
-      onUploaded(data.jobId, data.geminiFileName);
+      const { uploadUrl } = await initRes.json();
+
+      // 2. Upload chunks
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      let offset = 0;
+
+      for (let i = 0; i < totalChunks; i++) {
+        const isLast = i === totalChunks - 1;
+        const chunk = file.slice(offset, offset + CHUNK_SIZE);
+        const chunkBuffer = await chunk.arrayBuffer();
+
+        const chunkRes = await fetch("/api/upload/chunk", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "x-upload-url": uploadUrl,
+            "x-upload-offset": String(offset),
+            "x-upload-last": String(isLast),
+          },
+          body: chunkBuffer,
+        });
+
+        if (!chunkRes.ok) {
+          const text = await chunkRes.text();
+          let message = "Error al subir fragmento del video";
+          try {
+            const json = JSON.parse(text);
+            if (json.message) message = json.message;
+          } catch { /* non-JSON */ }
+          throw new Error(message);
+        }
+
+        const chunkData = await chunkRes.json();
+
+        if (chunkData.error) {
+          throw new Error(chunkData.message);
+        }
+
+        offset += chunkBuffer.byteLength;
+        setProgress(Math.round(((i + 1) / totalChunks) * 100));
+
+        if (isLast && chunkData.geminiFileName) {
+          const jobId = crypto.randomUUID();
+          onUploaded(jobId, chunkData.geminiFileName);
+          return;
+        }
+      }
+
+      throw new Error("No se recibió el nombre del archivo de Gemini");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Error al subir el archivo"
@@ -76,7 +113,7 @@ export function Step1Upload({ onUploaded }: Step1Props) {
         Sube tu video viral
       </h2>
       <p className="text-gray-400 text-center mb-6">
-        Sube el video de TikTok que quieres replicar (max 3.5MB)
+        Sube el video de TikTok que quieres replicar
       </p>
 
       <div
@@ -86,7 +123,7 @@ export function Step1Upload({ onUploaded }: Step1Props) {
         }}
         onDragLeave={() => setDragActive(false)}
         onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => !loading && inputRef.current?.click()}
         className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${
           dragActive
             ? "border-purple-500 bg-purple-500/10"
@@ -111,11 +148,19 @@ export function Step1Upload({ onUploaded }: Step1Props) {
       </div>
 
       {loading && (
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-          <span className="text-gray-300">
-            Subiendo video a Gemini...
-          </span>
+        <div className="mt-6">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-gray-300">
+              Subiendo video... {progress}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2">
+            <div
+              className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
       )}
 
