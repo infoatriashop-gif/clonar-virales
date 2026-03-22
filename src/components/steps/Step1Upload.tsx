@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { upload } from "@vercel/blob/client";
 
 interface Step1Props {
   onUploaded: (jobId: string, geminiFileName: string) => void;
@@ -10,6 +11,7 @@ export function Step1Upload({ onUploaded }: Step1Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
+  const [statusText, setStatusText] = useState("Subiendo video...");
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -17,22 +19,35 @@ export function Step1Upload({ onUploaded }: Step1Props) {
     setLoading(true);
     setError(null);
     setProgress(0);
+    setStatusText("Subiendo video...");
 
     try {
-      // 1. Init resumable upload session via our API (small request)
-      const initRes = await fetch("/api/upload/init", {
+      // 1. Upload to Vercel Blob (client-side, bypasses 4.5MB limit)
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/blob-upload",
+        onUploadProgress: ({ percentage }) => {
+          setProgress(Math.round(percentage * 0.8)); // 0-80%
+        },
+      });
+
+      // 2. Process: download from Blob → upload to Gemini (server-side)
+      setProgress(85);
+      setStatusText("Procesando video con IA...");
+
+      const processRes = await fetch("/api/upload/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          blobUrl: blob.url,
           fileName: file.name,
-          fileSize: file.size,
           mimeType: file.type || "video/mp4",
         }),
       });
 
-      if (!initRes.ok) {
-        const text = await initRes.text();
-        let message = "Error al iniciar la subida";
+      if (!processRes.ok) {
+        const text = await processRes.text();
+        let message = "Error al procesar el video";
         try {
           const json = JSON.parse(text);
           if (json.message) message = json.message;
@@ -40,45 +55,10 @@ export function Step1Upload({ onUploaded }: Step1Props) {
         throw new Error(message);
       }
 
-      const { uploadUrl } = await initRes.json();
-      setProgress(10);
-
-      // 2. Upload file directly to Google (bypasses Vercel size limit)
-      const uploadRes = await new Promise<Response>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", uploadUrl);
-        xhr.setRequestHeader("X-Goog-Upload-Command", "upload, finalize");
-        xhr.setRequestHeader("X-Goog-Upload-Offset", "0");
-
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            setProgress(10 + Math.round((e.loaded / e.total) * 85));
-          }
-        };
-
-        xhr.onload = () => {
-          resolve(new Response(xhr.responseText, {
-            status: xhr.status,
-            statusText: xhr.statusText,
-          }));
-        };
-
-        xhr.onerror = () => reject(new Error("Error de red al subir el video"));
-        xhr.send(file);
-      });
-
-      if (!uploadRes.ok) {
-        const text = await uploadRes.text();
-        throw new Error(`Error al subir video (${uploadRes.status}): ${text}`);
-      }
-
-      setProgress(95);
-
-      const data = JSON.parse(await uploadRes.text());
-      const geminiFileName = data?.file?.name;
+      const { geminiFileName } = await processRes.json();
 
       if (!geminiFileName) {
-        throw new Error("Gemini no devolvió el nombre del archivo");
+        throw new Error("No se recibió el archivo de Gemini");
       }
 
       setProgress(100);
@@ -145,7 +125,7 @@ export function Step1Upload({ onUploaded }: Step1Props) {
           <div className="flex items-center justify-center gap-3 mb-2">
             <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
             <span className="text-gray-300">
-              Subiendo video... {progress}%
+              {statusText} {progress}%
             </span>
           </div>
           <div className="w-full bg-gray-700 rounded-full h-2">
