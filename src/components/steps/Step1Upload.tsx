@@ -6,8 +6,6 @@ interface Step1Props {
   onUploaded: (jobId: string, geminiFileName: string) => void;
 }
 
-const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB per chunk
-
 export function Step1Upload({ onUploaded }: Step1Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +19,7 @@ export function Step1Upload({ onUploaded }: Step1Props) {
     setProgress(0);
 
     try {
-      // 1. Init resumable upload session
+      // 1. Init resumable upload session via our API (small request)
       const initRes = await fetch("/api/upload/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -43,54 +41,49 @@ export function Step1Upload({ onUploaded }: Step1Props) {
       }
 
       const { uploadUrl } = await initRes.json();
+      setProgress(10);
 
-      // 2. Upload chunks
-      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-      let offset = 0;
+      // 2. Upload file directly to Google (bypasses Vercel size limit)
+      const uploadRes = await new Promise<Response>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", uploadUrl);
+        xhr.setRequestHeader("X-Goog-Upload-Command", "upload, finalize");
+        xhr.setRequestHeader("X-Goog-Upload-Offset", "0");
 
-      for (let i = 0; i < totalChunks; i++) {
-        const isLast = i === totalChunks - 1;
-        const chunk = file.slice(offset, offset + CHUNK_SIZE);
-        const chunkBuffer = await chunk.arrayBuffer();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setProgress(10 + Math.round((e.loaded / e.total) * 85));
+          }
+        };
 
-        const chunkRes = await fetch("/api/upload/chunk", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "x-upload-url": uploadUrl,
-            "x-upload-offset": String(offset),
-            "x-upload-last": String(isLast),
-          },
-          body: chunkBuffer,
-        });
+        xhr.onload = () => {
+          resolve(new Response(xhr.responseText, {
+            status: xhr.status,
+            statusText: xhr.statusText,
+          }));
+        };
 
-        if (!chunkRes.ok) {
-          const text = await chunkRes.text();
-          let message = "Error al subir fragmento del video";
-          try {
-            const json = JSON.parse(text);
-            if (json.message) message = json.message;
-          } catch { /* non-JSON */ }
-          throw new Error(message);
-        }
+        xhr.onerror = () => reject(new Error("Error de red al subir el video"));
+        xhr.send(file);
+      });
 
-        const chunkData = await chunkRes.json();
-
-        if (chunkData.error) {
-          throw new Error(chunkData.message);
-        }
-
-        offset += chunkBuffer.byteLength;
-        setProgress(Math.round(((i + 1) / totalChunks) * 100));
-
-        if (isLast && chunkData.geminiFileName) {
-          const jobId = crypto.randomUUID();
-          onUploaded(jobId, chunkData.geminiFileName);
-          return;
-        }
+      if (!uploadRes.ok) {
+        const text = await uploadRes.text();
+        throw new Error(`Error al subir video (${uploadRes.status}): ${text}`);
       }
 
-      throw new Error("No se recibió el nombre del archivo de Gemini");
+      setProgress(95);
+
+      const data = JSON.parse(await uploadRes.text());
+      const geminiFileName = data?.file?.name;
+
+      if (!geminiFileName) {
+        throw new Error("Gemini no devolvió el nombre del archivo");
+      }
+
+      setProgress(100);
+      const jobId = crypto.randomUUID();
+      onUploaded(jobId, geminiFileName);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Error al subir el archivo"
