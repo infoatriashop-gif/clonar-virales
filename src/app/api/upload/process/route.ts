@@ -1,4 +1,4 @@
-import { del } from "@vercel/blob";
+import { del, getDownloadUrl } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -20,8 +20,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. Download file from Vercel Blob
-    const blobRes = await fetch(blobUrl);
+    // 1. Download file from Vercel Blob (use signed URL for private stores)
+    const downloadUrl = await getDownloadUrl(blobUrl);
+    const blobRes = await fetch(downloadUrl);
     if (!blobRes.ok) {
       throw new Error("No se pudo descargar el archivo del blob");
     }
