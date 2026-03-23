@@ -44,7 +44,7 @@ export function Step1Upload({ apiKey, onUploaded }: Step1Props) {
       const { uploadUrl } = await initRes.json();
       if (!uploadUrl) throw new Error("No se recibió URL de subida");
 
-      // 2. Upload file directly to Gemini (bypass Vercel body limit)
+      // 2. Upload file through our proxy to avoid CORS issues
       setStatusText("Subiendo video...");
       setProgress(5);
 
@@ -62,6 +62,10 @@ export function Step1Upload({ apiKey, onUploaded }: Step1Props) {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const data = JSON.parse(xhr.responseText);
+              if (data.error) {
+                reject(new Error(data.message || "Error al subir a Gemini"));
+                return;
+              }
               const name = data?.file?.name;
               if (!name) {
                 reject(new Error("Gemini no devolvió el nombre del archivo"));
@@ -72,7 +76,7 @@ export function Step1Upload({ apiKey, onUploaded }: Step1Props) {
               reject(new Error("Error al parsear respuesta de Gemini"));
             }
           } else {
-            reject(new Error(`Error al subir a Gemini (${xhr.status}): ${xhr.responseText?.slice(0, 200)}`));
+            reject(new Error(`Error al subir (${xhr.status}): ${xhr.responseText?.slice(0, 200)}`));
           }
         };
 
@@ -84,9 +88,8 @@ export function Step1Upload({ apiKey, onUploaded }: Step1Props) {
           reject(new Error("Timeout al subir el video"));
         };
 
-        xhr.open("POST", uploadUrl);
-        xhr.setRequestHeader("X-Goog-Upload-Command", "upload, finalize");
-        xhr.setRequestHeader("X-Goog-Upload-Offset", "0");
+        xhr.open("POST", "/api/upload/send");
+        xhr.setRequestHeader("x-upload-url", uploadUrl);
         xhr.send(file);
       });
 
