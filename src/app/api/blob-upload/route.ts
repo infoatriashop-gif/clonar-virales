@@ -1,6 +1,8 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextRequest, NextResponse } from "next/server";
 
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as HandleUploadBody;

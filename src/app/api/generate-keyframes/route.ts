@@ -4,6 +4,8 @@ import { generateSingleImage } from "@/lib/imagen";
 import { buildKeyframePrompt } from "@/lib/prompts";
 import { getApiKey } from "@/lib/api-key";
 
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
   try {
     const apiKeyOrError = getApiKey(request);

@@ -35,6 +35,8 @@ export function Step1Upload({ apiKey, onUploaded }: Step1Props) {
       // 2. Process: download from Blob → upload to Gemini (server-side)
       setProgress(85);
       setStatusText("Procesando video con IA...");
+      // Allow React to re-render before the blocking fetch
+      await new Promise((r) => setTimeout(r, 0));
 
       const processRes = await fetch("/api/upload/process", {
         method: "POST",
