@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { upload } from "@vercel/blob/client";
+
+const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per chunk (within Vercel 4.5MB body limit)
 
 interface Step1Props {
   apiKey: string;
@@ -20,56 +21,74 @@ export function Step1Upload({ apiKey, onUploaded }: Step1Props) {
     setLoading(true);
     setError(null);
     setProgress(0);
-    setStatusText("Subiendo video...");
+    setStatusText("Iniciando subida...");
 
     try {
-      // 1. Upload to Vercel Blob (client-side, bypasses 4.5MB limit)
-      const blob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/blob-upload",
-        onUploadProgress: ({ percentage }) => {
-          setProgress(Math.round(percentage * 0.8)); // 0-80%
-        },
-      });
-
-      // 2. Process: download from Blob → upload to Gemini (server-side)
-      setProgress(85);
-      setStatusText("Procesando video con IA...");
-      // Allow React to re-render before the blocking fetch
-      await new Promise((r) => setTimeout(r, 0));
-
-      const processRes = await fetch("/api/upload/process", {
+      // 1. Init resumable upload session via our API (server creates session with Gemini)
+      const initRes = await fetch("/api/upload/init", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-gemini-api-key": apiKey,
         },
         body: JSON.stringify({
-          blobUrl: blob.url,
           fileName: file.name,
+          fileSize: file.size,
           mimeType: file.type || "video/mp4",
         }),
       });
 
-      if (!processRes.ok) {
-        const text = await processRes.text();
-        let message = "Error al procesar el video";
-        try {
-          const json = JSON.parse(text);
-          if (json.message) message = json.message;
-        } catch { /* non-JSON */ }
-        throw new Error(message);
+      if (!initRes.ok) {
+        const data = await initRes.json().catch(() => ({}));
+        throw new Error(data.message || `Error al iniciar subida (${initRes.status})`);
       }
 
-      const { geminiFileName } = await processRes.json();
+      const { uploadUrl } = await initRes.json();
+      if (!uploadUrl) throw new Error("No se recibió URL de subida");
 
-      if (!geminiFileName) {
-        throw new Error("No se recibió el archivo de Gemini");
+      // 2. Upload file in chunks via our chunk proxy
+      setStatusText("Subiendo video...");
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      let offset = 0;
+
+      for (let i = 0; i < totalChunks; i++) {
+        const isLast = i === totalChunks - 1;
+        const chunk = file.slice(offset, offset + CHUNK_SIZE);
+        const chunkBuffer = await chunk.arrayBuffer();
+
+        const chunkRes = await fetch("/api/upload/chunk", {
+          method: "POST",
+          headers: {
+            "x-upload-url": uploadUrl,
+            "x-upload-offset": String(offset),
+            "x-upload-last": isLast ? "true" : "false",
+            "Content-Type": "application/octet-stream",
+          },
+          body: chunkBuffer,
+        });
+
+        if (!chunkRes.ok) {
+          const data = await chunkRes.json().catch(() => ({}));
+          throw new Error(data.message || `Error al subir fragmento ${i + 1}`);
+        }
+
+        const chunkData = await chunkRes.json();
+
+        if (isLast && chunkData.done) {
+          if (!chunkData.geminiFileName) {
+            throw new Error("No se recibió el archivo de Gemini");
+          }
+
+          setProgress(100);
+          const jobId = crypto.randomUUID();
+          onUploaded(jobId, chunkData.geminiFileName);
+          return;
+        }
+
+        offset = chunkData.nextOffset ?? offset + chunkBuffer.byteLength;
+        // Progress: 0-95% during upload
+        setProgress(Math.round(((i + 1) / totalChunks) * 95));
       }
-
-      setProgress(100);
-      const jobId = crypto.randomUUID();
-      onUploaded(jobId, geminiFileName);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Error al subir el archivo"
