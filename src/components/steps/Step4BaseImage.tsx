@@ -6,6 +6,7 @@ import { LoadingSpinner } from "@/components/ui/ProgressBar";
 import { ImageGrid } from "@/components/ui/ImageGrid";
 
 interface Step4Props {
+  apiKey: string;
   jobId: string;
   onSelected: (index: number, images: string[]) => void;
 }
@@ -16,7 +17,7 @@ interface BaseResponse {
   error?: string;
 }
 
-export function Step4BaseImage({ jobId, onSelected }: Step4Props) {
+export function Step4BaseImage({ apiKey, jobId, onSelected }: Step4Props) {
   const [selected, setSelected] = useState<number | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [triggered, setTriggered] = useState(false);
@@ -27,10 +28,13 @@ export function Step4BaseImage({ jobId, onSelected }: Step4Props) {
     setTriggered(true);
     fetch("/api/generate-base", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-gemini-api-key": apiKey,
+      },
       body: JSON.stringify({ jobId }),
     });
-  }, [jobId, triggered]);
+  }, [apiKey, jobId, triggered]);
 
   const handleComplete = useCallback((data: BaseResponse) => {
     if (data.baseImages) setImages(data.baseImages);

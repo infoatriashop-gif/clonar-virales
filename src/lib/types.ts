@@ -94,6 +94,7 @@ export interface Job {
   currentClip?: number;
   totalClips?: number;
   error?: string;
+  apiKey?: string;
   createdAt: Date;
   acento?: string;
   productoEditado?: {

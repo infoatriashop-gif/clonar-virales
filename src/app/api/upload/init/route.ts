@@ -1,21 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getApiKey } from "@/lib/api-key";
 
 export async function POST(request: NextRequest) {
   try {
+    const apiKeyOrError = getApiKey(request);
+    if (apiKeyOrError instanceof NextResponse) return apiKeyOrError;
+    const apiKey = apiKeyOrError;
+
     const { fileName, fileSize, mimeType } = await request.json();
 
     if (!fileName || !fileSize || !mimeType) {
       return NextResponse.json(
         { error: true, message: "Faltan datos del archivo" },
         { status: 400 }
-      );
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: true, message: "GEMINI_API_KEY no configurada" },
-        { status: 500 }
       );
     }
 

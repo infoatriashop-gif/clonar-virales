@@ -6,12 +6,13 @@ import { AnalysisCard } from "@/components/ui/AnalysisCard";
 import { VideoAnalysis } from "@/lib/types";
 
 interface Step2Props {
+  apiKey: string;
   jobId: string;
   geminiFileName: string;
   onAnalyzed: (analysis: VideoAnalysis) => void;
 }
 
-export function Step2Analysis({ jobId, geminiFileName, onAnalyzed }: Step2Props) {
+export function Step2Analysis({ apiKey, jobId, geminiFileName, onAnalyzed }: Step2Props) {
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +25,10 @@ export function Step2Analysis({ jobId, geminiFileName, onAnalyzed }: Step2Props)
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": apiKey,
+        },
         body: JSON.stringify({ geminiFileName }),
       });
 
@@ -48,7 +52,7 @@ export function Step2Analysis({ jobId, geminiFileName, onAnalyzed }: Step2Props)
     } finally {
       setLoading(false);
     }
-  }, [jobId, geminiFileName]);
+  }, [apiKey, jobId, geminiFileName]);
 
   useEffect(() => {
     runAnalysis();

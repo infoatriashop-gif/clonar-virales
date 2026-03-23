@@ -2,17 +2,17 @@ import { GoogleGenAI } from "@google/genai";
 import { ANALYSIS_PROMPT } from "./prompts";
 import { VideoAnalysis } from "./types";
 
-function getClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY no está configurada");
+function getClient(apiKey: string) {
+  if (!apiKey) throw new Error("Gemini API Key no proporcionada");
   return new GoogleGenAI({ apiKey });
 }
 
 export async function uploadToGemini(
+  apiKey: string,
   buffer: Buffer,
   mimeType: string
 ): Promise<string> {
-  const ai = getClient();
+  const ai = getClient(apiKey);
 
   const uint8 = new Uint8Array(buffer);
   const uploadedFile = await ai.files.upload({
@@ -28,9 +28,10 @@ export async function uploadToGemini(
 }
 
 export async function analyzeGeminiFile(
+  apiKey: string,
   geminiFileName: string
 ): Promise<VideoAnalysis> {
-  const ai = getClient();
+  const ai = getClient(apiKey);
 
   // Wait for file processing
   let fileStatus = await ai.files.get({ name: geminiFileName });

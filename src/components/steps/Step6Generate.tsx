@@ -5,6 +5,7 @@ import { usePolling } from "@/hooks/usePolling";
 import { LoadingSpinner, ProgressBar } from "@/components/ui/ProgressBar";
 
 interface Step6Props {
+  apiKey: string;
   jobId: string;
   onComplete: (downloadUrl: string) => void;
 }
@@ -26,7 +27,7 @@ const MESSAGES = [
   "Renderizando video...",
 ];
 
-export function Step6Generate({ jobId, onComplete }: Step6Props) {
+export function Step6Generate({ apiKey, jobId, onComplete }: Step6Props) {
   const [msgIndex, setMsgIndex] = useState(0);
   const [triggered, setTriggered] = useState(false);
 
@@ -36,10 +37,13 @@ export function Step6Generate({ jobId, onComplete }: Step6Props) {
     setTriggered(true);
     fetch("/api/generate-clips", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-gemini-api-key": apiKey,
+      },
       body: JSON.stringify({ jobId }),
     });
-  }, [jobId, triggered]);
+  }, [apiKey, jobId, triggered]);
 
   // Rotate messages
   useEffect(() => {

@@ -2,18 +2,18 @@ import { GoogleGenAI, PersonGeneration } from "@google/genai";
 import * as fs from "fs";
 import * as path from "path";
 
-function getClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY no está configurada");
+function getClient(apiKey: string) {
+  if (!apiKey) throw new Error("Gemini API Key no proporcionada");
   return new GoogleGenAI({ apiKey });
 }
 
 export async function generateImages(
+  apiKey: string,
   prompt: string,
   count: number = 4,
   outputDir: string
 ): Promise<string[]> {
-  const ai = getClient();
+  const ai = getClient(apiKey);
 
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -51,10 +51,11 @@ export async function generateImages(
 }
 
 export async function generateSingleImage(
+  apiKey: string,
   prompt: string,
   outputPath: string
 ): Promise<string> {
-  const ai = getClient();
+  const ai = getClient(apiKey);
 
   const dir = path.dirname(outputPath);
   if (!fs.existsSync(dir)) {

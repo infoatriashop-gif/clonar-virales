@@ -6,6 +6,7 @@ import { LoadingSpinner, ProgressBar } from "@/components/ui/ProgressBar";
 import Image from "next/image";
 
 interface Step5Props {
+  apiKey: string;
   jobId: string;
   selectedBaseImage: number;
   acento: string;
@@ -23,6 +24,7 @@ interface KeyframeResponse {
 }
 
 export function Step5Keyframes({
+  apiKey,
   jobId,
   selectedBaseImage,
   acento,
@@ -38,10 +40,13 @@ export function Step5Keyframes({
     setTriggered(true);
     fetch("/api/generate-keyframes", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-gemini-api-key": apiKey,
+      },
       body: JSON.stringify({ jobId, selectedBaseImage, acento, productoEditado }),
     });
-  }, [jobId, selectedBaseImage, acento, productoEditado, triggered]);
+  }, [apiKey, jobId, selectedBaseImage, acento, productoEditado, triggered]);
 
   const handleComplete = useCallback(
     (data: KeyframeResponse) => {

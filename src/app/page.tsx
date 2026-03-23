@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Stepper } from "@/components/stepper/Stepper";
+import { ApiKeyInput } from "@/components/ApiKeyInput";
 import { Step1Upload } from "@/components/steps/Step1Upload";
 import { Step2Analysis } from "@/components/steps/Step2Analysis";
 import { Step3Edit } from "@/components/steps/Step3Edit";
@@ -13,6 +14,8 @@ import { useWizard } from "@/hooks/useWizard";
 import { VideoAnalysis } from "@/lib/types";
 
 export default function Home() {
+  const [apiKey, setApiKey] = useState("");
+
   const {
     state,
     setStep,
@@ -77,17 +80,24 @@ export default function Home() {
     [setFinalVideo, setStep]
   );
 
+  const handleApiKeySet = useCallback((key: string) => {
+    setApiKey(key);
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-950">
       {/* Header */}
       <header className="border-b border-gray-800 py-4">
-        <div className="max-w-5xl mx-auto px-4">
-          <h1 className="text-xl font-bold text-white">
-            Clonar Virales
-          </h1>
-          <p className="text-xs text-gray-500">
-            Replica videos virales de TikTok Shop con IA
-          </p>
+        <div className="max-w-5xl mx-auto px-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-white">
+              Clonar Virales
+            </h1>
+            <p className="text-xs text-gray-500">
+              Replica videos virales de TikTok Shop con IA
+            </p>
+          </div>
+          <ApiKeyInput onKeySet={handleApiKeySet} />
         </div>
       </header>
 
@@ -95,12 +105,27 @@ export default function Home() {
       <main className="max-w-5xl mx-auto px-4 py-8">
         <Stepper currentStep={state.currentStep} />
 
-        {state.currentStep === 1 && (
-          <Step1Upload onUploaded={handleUpload} />
+        {!apiKey && (
+          <div className="max-w-lg mx-auto mt-8 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 text-yellow-400 text-sm text-center">
+            Configura tu <strong>Gemini API Key</strong> en la esquina superior derecha para comenzar.
+            <br />
+            <a
+              href="https://aistudio.google.com/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline text-purple-400 hover:text-purple-300"
+            >
+              Obtener API Key gratis
+            </a>
+          </div>
         )}
 
-        {state.currentStep === 2 && state.jobId && state.geminiFileName && (
-          <Step2Analysis jobId={state.jobId} geminiFileName={state.geminiFileName} onAnalyzed={handleAnalysis} />
+        {apiKey && state.currentStep === 1 && (
+          <Step1Upload apiKey={apiKey} onUploaded={handleUpload} />
+        )}
+
+        {apiKey && state.currentStep === 2 && state.jobId && state.geminiFileName && (
+          <Step2Analysis apiKey={apiKey} jobId={state.jobId} geminiFileName={state.geminiFileName} onAnalyzed={handleAnalysis} />
         )}
 
         {state.currentStep === 3 && state.analysis && (
@@ -114,15 +139,17 @@ export default function Home() {
           />
         )}
 
-        {state.currentStep === 4 && state.jobId && (
+        {apiKey && state.currentStep === 4 && state.jobId && (
           <Step4BaseImage
+            apiKey={apiKey}
             jobId={state.jobId}
             onSelected={handleBaseSelected}
           />
         )}
 
-        {state.currentStep === 5 && state.jobId && (
+        {apiKey && state.currentStep === 5 && state.jobId && (
           <Step5Keyframes
+            apiKey={apiKey}
             jobId={state.jobId}
             selectedBaseImage={state.selectedBaseImage ?? 0}
             acento={state.acento}
@@ -135,8 +162,9 @@ export default function Home() {
           />
         )}
 
-        {state.currentStep === 6 && state.jobId && (
+        {apiKey && state.currentStep === 6 && state.jobId && (
           <Step6Generate
+            apiKey={apiKey}
             jobId={state.jobId}
             onComplete={handleGenerateComplete}
           />

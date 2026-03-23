@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getJob, updateJob } from "@/lib/jobs";
 import { generateSingleImage } from "@/lib/imagen";
 import { buildKeyframePrompt } from "@/lib/prompts";
+import { getApiKey } from "@/lib/api-key";
 
 export async function POST(request: NextRequest) {
   try {
+    const apiKeyOrError = getApiKey(request);
+    if (apiKeyOrError instanceof NextResponse) return apiKeyOrError;
+    const apiKey = apiKeyOrError;
+
     const { jobId, selectedBaseImage, acento, productoEditado } =
       await request.json();
 
@@ -30,6 +35,7 @@ export async function POST(request: NextRequest) {
       productoEditado,
       totalClips: job.analysis.clips.length,
       currentClip: 0,
+      apiKey,
     });
 
     const clips = job.analysis.clips;
@@ -53,7 +59,7 @@ export async function POST(request: NextRequest) {
             producto
           );
           const initialPath = `${outputDir}/keyframe_${i}_initial.png`;
-          await generateSingleImage(initialPrompt, initialPath);
+          await generateSingleImage(apiKey, initialPrompt, initialPath);
           keyframePaths.push(initialPath);
         }
 
@@ -64,7 +70,7 @@ export async function POST(request: NextRequest) {
           producto
         );
         const finalPath = `${outputDir}/keyframe_${clips.length}_final.png`;
-        await generateSingleImage(finalPrompt, finalPath);
+        await generateSingleImage(apiKey, finalPrompt, finalPath);
         keyframePaths.push(finalPath);
 
         updateJob(jobId, {

@@ -3,9 +3,14 @@ import { getJob, updateJob } from "@/lib/jobs";
 import { generateClip } from "@/lib/veo";
 import { concatenateClips } from "@/lib/ffmpeg";
 import { buildClipPrompt } from "@/lib/prompts";
+import { getApiKey } from "@/lib/api-key";
 
 export async function POST(request: NextRequest) {
   try {
+    const apiKeyOrError = getApiKey(request);
+    if (apiKeyOrError instanceof NextResponse) return apiKeyOrError;
+    const apiKey = apiKeyOrError;
+
     const { jobId } = await request.json();
 
     const job = getJob(jobId);
@@ -31,6 +36,7 @@ export async function POST(request: NextRequest) {
       status: "generating_clips",
       totalClips: clips.length,
       currentClip: 0,
+      apiKey,
     });
 
     // Generate clips in background
@@ -60,7 +66,7 @@ export async function POST(request: NextRequest) {
           );
 
           const clipPath = `${outputDir}/clip_${i + 1}.mp4`;
-          await generateClip(prompt, firstFrame, lastFrame, clipPath);
+          await generateClip(apiKey, prompt, firstFrame, lastFrame, clipPath);
           clipPaths.push(clipPath);
         }
 

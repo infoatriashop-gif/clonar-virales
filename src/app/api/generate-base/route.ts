@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getJob, updateJob } from "@/lib/jobs";
 import { generateImages } from "@/lib/imagen";
 import { buildBaseImagePrompt } from "@/lib/prompts";
+import { getApiKey } from "@/lib/api-key";
 
 export async function POST(request: NextRequest) {
   try {
+    const apiKeyOrError = getApiKey(request);
+    if (apiKeyOrError instanceof NextResponse) return apiKeyOrError;
+    const apiKey = apiKeyOrError;
+
     const { jobId } = await request.json();
 
     const job = getJob(jobId);
@@ -22,12 +27,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    updateJob(jobId, { status: "generating_base" });
+    updateJob(jobId, { status: "generating_base", apiKey });
 
     const prompt = buildBaseImagePrompt(job.analysis);
     const outputDir = `/tmp/clonar-virales/jobs/${jobId}/base`;
 
-    generateImages(prompt, 4, outputDir)
+    generateImages(apiKey, prompt, 4, outputDir)
       .then((paths) => {
         updateJob(jobId, {
           status: "pending",

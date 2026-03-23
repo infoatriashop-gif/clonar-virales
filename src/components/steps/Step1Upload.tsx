@@ -4,10 +4,11 @@ import { useState, useRef } from "react";
 import { upload } from "@vercel/blob/client";
 
 interface Step1Props {
+  apiKey: string;
   onUploaded: (jobId: string, geminiFileName: string) => void;
 }
 
-export function Step1Upload({ onUploaded }: Step1Props) {
+export function Step1Upload({ apiKey, onUploaded }: Step1Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
@@ -37,7 +38,10 @@ export function Step1Upload({ onUploaded }: Step1Props) {
 
       const processRes = await fetch("/api/upload/process", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-gemini-api-key": apiKey,
+        },
         body: JSON.stringify({
           blobUrl: blob.url,
           fileName: file.name,

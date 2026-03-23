@@ -1,22 +1,19 @@
 import { del, getDownloadUrl } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
+import { getApiKey } from "@/lib/api-key";
 
 export async function POST(request: NextRequest) {
   try {
+    const apiKeyOrError = getApiKey(request);
+    if (apiKeyOrError instanceof NextResponse) return apiKeyOrError;
+    const apiKey = apiKeyOrError;
+
     const { blobUrl, fileName, mimeType } = await request.json();
 
     if (!blobUrl) {
       return NextResponse.json(
         { error: true, message: "Falta la URL del blob" },
         { status: 400 }
-      );
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: true, message: "GEMINI_API_KEY no configurada" },
-        { status: 500 }
       );
     }
 
