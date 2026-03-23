@@ -2,8 +2,6 @@
 
 import { useState, useRef } from "react";
 
-const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per chunk (within Vercel 4.5MB body limit)
-
 interface Step1Props {
   apiKey: string;
   onUploaded: (jobId: string, geminiFileName: string) => void;
@@ -24,7 +22,7 @@ export function Step1Upload({ apiKey, onUploaded }: Step1Props) {
     setStatusText("Iniciando subida...");
 
     try {
-      // 1. Init resumable upload session via our API (server creates session with Gemini)
+      // 1. Init resumable upload session via our API
       const initRes = await fetch("/api/upload/init", {
         method: "POST",
         headers: {
@@ -46,49 +44,56 @@ export function Step1Upload({ apiKey, onUploaded }: Step1Props) {
       const { uploadUrl } = await initRes.json();
       if (!uploadUrl) throw new Error("No se recibió URL de subida");
 
-      // 2. Upload file in chunks via our chunk proxy
+      // 2. Upload file directly to Gemini (bypass Vercel body limit)
       setStatusText("Subiendo video...");
-      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-      let offset = 0;
+      setProgress(5);
 
-      for (let i = 0; i < totalChunks; i++) {
-        const isLast = i === totalChunks - 1;
-        const chunk = file.slice(offset, offset + CHUNK_SIZE);
-        const chunkBuffer = await chunk.arrayBuffer();
+      const geminiFileName = await new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
 
-        const chunkRes = await fetch("/api/upload/chunk", {
-          method: "POST",
-          headers: {
-            "x-upload-url": uploadUrl,
-            "x-upload-offset": String(offset),
-            "x-upload-last": isLast ? "true" : "false",
-            "Content-Type": "application/octet-stream",
-          },
-          body: chunkBuffer,
-        });
-
-        if (!chunkRes.ok) {
-          const data = await chunkRes.json().catch(() => ({}));
-          throw new Error(data.message || `Error al subir fragmento ${i + 1}`);
-        }
-
-        const chunkData = await chunkRes.json();
-
-        if (isLast && chunkData.done) {
-          if (!chunkData.geminiFileName) {
-            throw new Error("No se recibió el archivo de Gemini");
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            // 5-90% during upload
+            setProgress(5 + Math.round((e.loaded / e.total) * 85));
           }
+        };
 
-          setProgress(100);
-          const jobId = crypto.randomUUID();
-          onUploaded(jobId, chunkData.geminiFileName);
-          return;
-        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              const name = data?.file?.name;
+              if (!name) {
+                reject(new Error("Gemini no devolvió el nombre del archivo"));
+                return;
+              }
+              resolve(name);
+            } catch {
+              reject(new Error("Error al parsear respuesta de Gemini"));
+            }
+          } else {
+            reject(new Error(`Error al subir a Gemini (${xhr.status}): ${xhr.responseText?.slice(0, 200)}`));
+          }
+        };
 
-        offset = chunkData.nextOffset ?? offset + chunkBuffer.byteLength;
-        // Progress: 0-95% during upload
-        setProgress(Math.round(((i + 1) / totalChunks) * 95));
-      }
+        xhr.onerror = () => {
+          reject(new Error("Error de red al subir el video"));
+        };
+
+        xhr.ontimeout = () => {
+          reject(new Error("Timeout al subir el video"));
+        };
+
+        xhr.open("POST", uploadUrl);
+        xhr.setRequestHeader("X-Goog-Upload-Command", "upload, finalize");
+        xhr.setRequestHeader("X-Goog-Upload-Offset", "0");
+        xhr.send(file);
+      });
+
+      setProgress(100);
+      setStatusText("Video subido!");
+      const jobId = crypto.randomUUID();
+      onUploaded(jobId, geminiFileName);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Error al subir el archivo"
