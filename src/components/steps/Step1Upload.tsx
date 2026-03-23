@@ -44,54 +44,52 @@ export function Step1Upload({ apiKey, onUploaded }: Step1Props) {
       const { uploadUrl } = await initRes.json();
       if (!uploadUrl) throw new Error("No se recibió URL de subida");
 
-      // 2. Upload file through our proxy to avoid CORS issues
+      // 2. Upload file in chunks to avoid Vercel 4.5MB body limit
       setStatusText("Subiendo video...");
       setProgress(5);
 
-      const geminiFileName = await new Promise<string>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
+      const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB per chunk
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      let offset = 0;
+      let geminiFileName = "";
 
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            // 5-90% during upload
-            setProgress(5 + Math.round((e.loaded / e.total) * 85));
-          }
-        };
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = file.slice(offset, offset + CHUNK_SIZE);
+        const isLast = i === totalChunks - 1;
 
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const data = JSON.parse(xhr.responseText);
-              if (data.error) {
-                reject(new Error(data.message || "Error al subir a Gemini"));
-                return;
-              }
-              const name = data?.file?.name;
-              if (!name) {
-                reject(new Error("Gemini no devolvió el nombre del archivo"));
-                return;
-              }
-              resolve(name);
-            } catch {
-              reject(new Error("Error al parsear respuesta de Gemini"));
-            }
-          } else {
-            reject(new Error(`Error al subir (${xhr.status}): ${xhr.responseText?.slice(0, 200)}`));
-          }
-        };
+        const chunkRes = await fetch("/api/upload/chunk", {
+          method: "POST",
+          headers: {
+            "x-upload-url": uploadUrl,
+            "x-upload-offset": String(offset),
+            "x-upload-last": isLast ? "true" : "false",
+          },
+          body: chunk,
+        });
 
-        xhr.onerror = () => {
-          reject(new Error("Error de red al subir el video"));
-        };
+        if (!chunkRes.ok) {
+          const data = await chunkRes.json().catch(() => ({}));
+          throw new Error(data.message || `Error al subir fragmento ${i + 1}`);
+        }
 
-        xhr.ontimeout = () => {
-          reject(new Error("Timeout al subir el video"));
-        };
+        const chunkData = await chunkRes.json();
 
-        xhr.open("POST", "/api/upload/send");
-        xhr.setRequestHeader("x-upload-url", uploadUrl);
-        xhr.send(file);
-      });
+        if (chunkData.error) {
+          throw new Error(chunkData.message || "Error al subir fragmento");
+        }
+
+        if (isLast && chunkData.geminiFileName) {
+          geminiFileName = chunkData.geminiFileName;
+        }
+
+        offset += CHUNK_SIZE;
+        // 5-90% progress across all chunks
+        setProgress(5 + Math.round(((i + 1) / totalChunks) * 85));
+      }
+
+      if (!geminiFileName) {
+        throw new Error("Gemini no devolvió el nombre del archivo");
+      }
 
       setProgress(100);
       setStatusText("Video subido!");
